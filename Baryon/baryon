@@ -1,0 +1,114 @@
+#!/usr/bin/python
+
+import importlib
+import importlib.util
+import json
+from pathlib import Path
+
+from modules import BaryonModule, ModuleReturn, ToolType, proton_index
+
+import subprocess
+from subprocess import PIPE, STDOUT
+
+import os
+import sys
+
+
+def import_module(module_name, module_path):
+    _spec = importlib.util.spec_from_file_location(module_name, module_path)
+    _module = importlib.util.module_from_spec(_spec)
+    sys.modules[module_name] = _module
+    _spec.loader.exec_module(_module)
+    return _module
+
+
+if __name__ == "__main__":
+    verb = None
+    if "--verb=" in sys.argv[1]:
+        verb = sys.argv[1].split("=")[1]
+
+    tool_type = ToolType.OTHER
+    tool_args = sys.argv[3:]
+    # find tool type
+    p_index = proton_index(tool_args)
+    if p_index >= 0:
+        tool_type = ToolType.PROTON
+
+    if tool_type == ToolType.PROTON:
+        pre_command = tool_args[:p_index]
+        command = tool_args[p_index:p_index + 3]
+        command_args = tool_args[p_index + 3:]
+        is_scriptevaluator = any("iscriptevaluator.exe" in arg for arg in command)
+    else:
+        pre_command = []
+        command = tool_args
+        command_args = []
+        is_scriptevaluator = False
+
+    # load configs
+    config_dir = Path("~/.config/baryon").expanduser().resolve().absolute()
+    for config_name in ["baryon.conf", f"{os.environ.get('SteamAppId', '0')}.conf"]:
+        if (config_dir / config_name).exists():
+            bar_settings = json.load(open(config_dir / config_name, "r"))
+            if "environ" in bar_settings:
+                for b_key, b_val in bar_settings["environ"].items():
+                    os.environ[b_key] = b_val
+
+    # check compatibility tool requirements
+    command_dir = Path(command[0]).parent
+    if (command_dir / "baryon_settings.py").exists():
+        baryon_settings = import_module("baryon_settings", command_dir / "baryon_settings.py")
+
+        if hasattr(baryon_settings, "settings"):
+            b_settings = baryon_settings.settings
+            if "require_tool_exec" in b_settings and "use_require_tool" in b_settings:
+                tool_exec = b_settings["require_tool_exec"].replace("%verb%", verb)
+                use_rule = b_settings["use_require_tool"]
+                if use_rule == "always" or (use_rule == "scriptevaluator" and is_scriptevaluator):
+                    pre_command.append(tool_exec.split())
+
+    # configure modules list
+    script_path = Path(os.path.dirname(os.path.abspath(__file__)))
+    modules_list: list[tuple] = []
+    if (script_path / "modules").exists():
+        for module in os.listdir(script_path / "modules"):
+            if module.startswith("__"):
+                continue
+            _module_name = f"modules.{module.split('.')[0]}"
+            module_import = importlib.import_module(_module_name)
+            if hasattr(module_import, "priority") and hasattr(module_import, "get_module"):
+                module = module_import.get_module()
+                if isinstance(module, BaryonModule):
+                    modules_list.append((module_import.priority(), module_import.get_module()))
+    modules_list.sort(key=lambda item: item[0])
+
+    # run modules
+    """
+        if module return ModuleReturn.EXIT, baryon terminates after module execution
+        if module return ModuleReturn.SKIP, baryon skips next modules by priority
+    """
+    for _, baryon_module in modules_list:
+        return_code = baryon_module.module_run(pre_command, command, command_args, tool_type=tool_type,
+                                               verb=verb, is_scriptevaluator=is_scriptevaluator)
+        if return_code == ModuleReturn.EXIT:
+            exit(-1)
+        if return_code == ModuleReturn.SKIP:
+            break
+
+    run_command = []
+    for cmd in pre_command + command + command_args:
+        if isinstance(cmd, list | set):
+            run_command += list(cmd)
+        elif isinstance(cmd, str):
+            run_command.append(cmd)
+        else:
+            run_command.append(str(cmd))
+
+    print(f"BARYON RUN: {run_command}")
+    sc = subprocess.call(run_command, stdout=PIPE, stderr=STDOUT)
+
+    # run post modules
+    for _, baryon_module in modules_list:
+        baryon_module.post_execute(pre_command, command, command_args, tool_type=tool_type,
+                                   verb=verb, is_scriptevaluator=is_scriptevaluator)
+    exit(sc)
