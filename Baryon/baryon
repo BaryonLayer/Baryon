@@ -105,7 +105,7 @@ if __name__ == "__main__":
             run_command.append(str(cmd))
 
     print(f"BARYON RUN: {run_command}")
-    sc = subprocess.call(run_command, stdout=PIPE, stderr=STDOUT)
+    sc = subprocess.call(run_command)
 
     # run post modules
     for _, baryon_module in modules_list:
