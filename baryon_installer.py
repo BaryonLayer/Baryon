@@ -58,25 +58,6 @@ def generate_appmanifest(baryon_dir):
     return vdf.dumps(__appmanifest, pretty=True, acf=True)
 
 
-def generate_shortcuts():
-    with open("shortcuts.vdf", "rb") as f:
-        __shortcuts = vdf.binary_load(f)
-        __shortcuts['shortcuts']['2'] = deepcopy(__shortcuts['shortcuts']['1'])
-        __shortcuts['shortcuts']['3'] = deepcopy(__shortcuts['shortcuts']['1'])
-        __shortcuts['shortcuts'][str(APPID - 1)] = deepcopy(__shortcuts['shortcuts']['1'])
-        __shortcuts['shortcuts']['2']['appid'] = -1
-        __shortcuts['shortcuts']['2']['AppName'] = "BaryonTest1"
-        __shortcuts['shortcuts']['3']['appid'] = -2
-        __shortcuts['shortcuts']['3']['AppName'] = "BaryonTest2"
-        __shortcuts['shortcuts'][str(APPID - 1)]['appid'] = APPID - 1
-        __shortcuts['shortcuts'][str(APPID - 1)]['AppName'] = "Baryon"
-        __shortcuts['shortcuts'][str(APPID - 1)]['icon'] = '/home/exnt/Pictures/Contracts.png'
-        with open("shortcuts_test.vdf", "wb") as f2:
-            vdf.binary_dump(__shortcuts, f2)
-
-        print(__shortcuts)
-
-
 if __name__ == '__main__':
     if os.geteuid() < 1000:
         raise PermissionError("Don't run with system rights")
