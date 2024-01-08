@@ -3,6 +3,7 @@ Module for modifying the executable to be launched
 """
 
 import os
+from pathlib import Path
 
 from modules import BaryonModule
 from modules import ModuleReturn
@@ -18,6 +19,15 @@ class Cmdline(BaryonModule):
         if not is_scriptevaluator and any(cmd in os.environ for cmd in ["BARYON_EXEC", "BARYON_CMDLINE"]):
             __exec = os.environ.get("BARYON_EXEC", None)
             __args = os.environ.get("BARYON_ARGS", None)
+
+            if os.environ.get("BARYON_DIR", None) is not None:
+                path_dir = Path(os.environ.get("BARYON_DIR")).expanduser()
+                if path_dir.exists():
+                    os.chdir(path_dir)
+                elif os.environ.get("BARYON_CMDLINE", None) is not None:
+                    path_cmdline = Path(os.environ.get("BARYON_CMDLINE")).expanduser()
+                    if path_cmdline.exists():
+                        os.chdir(path_cmdline.parent)
 
             if not __exec:
                 __cmdline = os.environ.get("BARYON_CMDLINE").split(";")
